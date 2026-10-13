@@ -14,7 +14,8 @@
     i: -1,
     autoplay: !reduceMotion && params.get('autoplay') !== '0',
     userStopped: false,          // a tap on touch stops autoplay so the reader is not interrupted
-    dwell: 6000,
+    dwell: 8000,
+    hoverPause: params.get('hoverpause') === '1',   // off by default: the divider keeps filling under the cursor
     fx: params.get('fx') || (reduceMotion ? 'fade' : 'wipe'),
   };
   const pauses = new Set();      // hover / focus / offscreen / hidden
@@ -102,7 +103,7 @@
     });
   });
 
-  section.addEventListener('pointerenter', (e) => { if (e.pointerType !== 'touch') { pauses.add('hover'); syncPause(); } });
+  section.addEventListener('pointerenter', (e) => { if (state.hoverPause && e.pointerType !== 'touch') { pauses.add('hover'); syncPause(); } });
   section.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch') { pauses.delete('hover'); syncPause(); } });
   section.addEventListener('focusin', (e) => { if (e.target.matches(':focus-visible')) { pauses.add('focus'); syncPause(); } });
   section.addEventListener('focusout', (e) => { if (!section.contains(e.relatedTarget)) { pauses.delete('focus'); syncPause(); } });
@@ -119,7 +120,7 @@
 
   /* ---------- review modes ---------- */
   root.style.setProperty('--slow', Math.max(1, parseFloat(params.get('slow')) || 1));
-  setDwell(Math.max(2000, parseInt(params.get('dwell'), 10) || 6000));
+  setDwell(Math.max(2000, parseInt(params.get('dwell'), 10) || 8000));
   setFx(state.fx);
 
   if (SHOT) {
@@ -137,6 +138,7 @@
     const cur = {
       autoplay: state.autoplay && !state.userStopped ? 'on' : 'off',
       dwell: String(state.dwell),
+      hoverpause: state.hoverPause ? 'on' : 'off',
       fx: state.fx,
       slow: String(slowFactor()),
     };
@@ -152,6 +154,7 @@
     const v = b.dataset.v;
     if (key === 'autoplay') { state.autoplay = v === 'on'; state.userStopped = false; syncAutoplay(); }
     if (key === 'dwell') setDwell(parseInt(v, 10));
+    if (key === 'hoverpause') { state.hoverPause = v === 'on'; if (!state.hoverPause) pauses.delete('hover'); else if (section.matches(':hover')) pauses.add('hover'); syncPause(); }
     if (key === 'fx') setFx(v);
     if (key === 'slow') root.style.setProperty('--slow', v);
     syncPanel();

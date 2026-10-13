@@ -18,7 +18,7 @@
 
   /* motion */
   --slow: 1;
-  --dwell: 6000ms;                                  /* time per item; JS keeps it in sync */
+  --dwell: 8000ms;                                  /* time per item; JS keeps it in sync */
   --ease-out: cubic-bezier(.16, 1, .3, 1);
   --ease-io: cubic-bezier(.65, 0, .35, 1);
   --ease-wipe: cubic-bezier(.77, 0, .18, 1);
