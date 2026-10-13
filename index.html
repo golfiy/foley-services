@@ -14,7 +14,7 @@
 </head>
 <body>
   <main class="page">
-    <section class="svc" id="services" aria-label="Services">
+    <section class="svc svc-root" id="svca" aria-label="Services">
       <span class="svc-mark" aria-hidden="true"></span>
 
       <div class="svc-media">
@@ -87,7 +87,27 @@
         </div>
       </div>
     </section>
+
+    <!-- Variant B: horizontal tabs. Tabs, photos and panels are built by app.js from variant A's content -->
+    <section class="svcb svc-root" id="svcb" aria-label="Services" hidden>
+      <div class="svcb-tabs" role="tablist" aria-label="Services"></div>
+      <div class="svcb-media"></div>
+      <div class="svcb-side">
+        <div class="svcb-panels"></div>
+        <div class="svcb-arrows">
+          <button class="svcb-arrow" type="button" data-step="-1" aria-label="Previous service"><svg viewBox="0 0 13.7004 16.5402" width="19" height="22.94" aria-hidden="true" style="transform: scaleX(-1)"><path d="M13.6489 9.62721C13.6819 9.59427 13.7004 9.54959 13.7004 9.50301V9.04591C13.7004 8.99932 13.6819 8.95464 13.6489 8.92171L6.72724 2L5.75848 2.96876L11.3764 8.58672H0V9.95677H11.3818L5.76721 15.5714L6.73598 16.5402L13.6489 9.62721Z" fill="currentColor"/></svg></button>
+          <button class="svcb-arrow" type="button" data-step="1" aria-label="Next service"><svg viewBox="0 0 13.7004 16.5402" width="19" height="22.94" aria-hidden="true"><path d="M13.6489 9.62721C13.6819 9.59427 13.7004 9.54959 13.7004 9.50301V9.04591C13.7004 8.99932 13.6819 8.95464 13.6489 8.92171L6.72724 2L5.75848 2.96876L11.3764 8.58672H0V9.95677H11.3818L5.76721 15.5714L6.73598 16.5402L13.6489 9.62721Z" fill="currentColor"/></svg></button>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <!-- A / B layout switch -->
+  <nav class="ab" aria-label="Layout variant">
+    <span class="ab-label">Layout</span>
+    <button type="button" data-layout="a" aria-pressed="true">A <span>Accordion</span></button>
+    <button type="button" data-layout="b" aria-pressed="false">B <span>Tabs</span></button>
+  </nav>
 
   <!-- Demo panel: press "." -->
   <aside class="demo" id="demo" hidden aria-label="Demo panel">
