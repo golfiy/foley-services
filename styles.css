@@ -1,0 +1,355 @@
+/* ==========================================================================
+   Foley – Services (photo + auto-advancing accordion)
+   Built from a screenshot; geometry assumes a 1440 frame (72 padding, 750 photo, 90 gap, 456 list)
+   ========================================================================== */
+
+:root {
+  --ink: #111117;
+  --ink-muted: #70707d;
+  --body-ink: #1a3946;
+  --rule: #c8d1dc;
+  --section-bg: #f8fafb;
+  --page-bg: #ffffff;
+  --btn: #2a4c5a;
+  --btn-hover: #1a3946;
+  --green: #81e014;
+
+  --font: "Inter", system-ui, -apple-system, sans-serif;
+
+  /* motion */
+  --slow: 1;
+  --dwell: 6000ms;                                  /* time per item; JS keeps it in sync */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-io: cubic-bezier(.65, 0, .35, 1);
+  --ease-wipe: cubic-bezier(.77, 0, .18, 1);
+  --t-swap: calc(640ms * var(--slow));             /* accordion height + title */
+  --t-wipe: calc(1000ms * var(--slow));            /* photo reveal */
+  --t-fade: calc(360ms * var(--slow));
+  --t-rise: calc(620ms * var(--slow));
+  --lead: calc(200ms * var(--slow));
+  --stagger: calc(70ms * var(--slow));
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page-bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-variation-settings: "opsz" 32;               /* Inter Display cut of the variable font */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+p, h3 { margin: 0; }
+a { color: inherit; text-decoration: none; }
+img, svg { display: block; }
+
+.page { padding: 48px; }
+
+/* ==========================================================================
+   Layout
+   ========================================================================== */
+.svc {
+  position: relative;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 750fr) minmax(0, 456fr);
+  column-gap: clamp(40px, 6.25vw, 90px);
+  background: var(--section-bg);
+}
+
+.svc-mark {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 12px;
+  height: 12px;
+  background: var(--green);
+}
+
+/* ==========================================================================
+   Photo stack
+   ========================================================================== */
+.svc-media {
+  position: relative;
+  overflow: hidden;
+  background: #e9edf1;
+}
+.svc-media::before {                                /* 750 × 631 minimum; stretches if the list is taller */
+  content: "";
+  display: block;
+  padding-top: calc(631 / 750 * 100%);
+}
+
+.ph {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  visibility: hidden;
+  clip-path: inset(0);
+  transition:
+    clip-path var(--t-wipe) var(--ease-wipe),
+    opacity var(--t-wipe) var(--ease-io);
+}
+.ph.is-prev   { visibility: visible; z-index: 1; }
+.ph.is-active { visibility: visible; z-index: 2; }
+
+.ph-zoom { width: 100%; height: 100%; }
+.ph img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: none;
+  transition: transform calc(1400ms * var(--slow)) var(--ease-out);
+}
+
+/* entering start state (JS adds .is-entering, forces a frame, then removes it) */
+.ph.is-entering { transition: none; }
+.ph.is-entering img { transform: scale(1.12); transition: none; }
+.svc[data-fx="wipe"] .ph.is-entering[data-from="below"] { clip-path: inset(100% 0 0 0); }
+.svc[data-fx="wipe"] .ph.is-entering[data-from="above"] { clip-path: inset(0 0 100% 0); }
+.svc[data-fx="fade"] .ph.is-entering { opacity: 0; }
+.svc[data-fx="fade"] .ph.is-entering img { transform: scale(1.04); }
+
+/* slow push-in while an item is on screen; frozen together with the progress bar */
+.ph.is-active .ph-zoom,
+.ph.is-prev .ph-zoom { animation: kenburns var(--dwell) linear forwards; }
+@keyframes kenburns { from { transform: scale(1); } to { transform: scale(1.05); } }
+
+/* ==========================================================================
+   Accordion
+   ========================================================================== */
+.svc-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.svc-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+  transition:
+    flex-grow var(--t-swap) var(--ease-io),
+    margin-top var(--t-swap) var(--ease-io);
+}
+.svc-item.is-active { flex-grow: 1; }
+.svc-item.is-active:not(:first-child) { margin-top: 26px; }   /* air above the open item, as in the mock */
+
+.svc-rule {
+  position: relative;
+  display: block;
+  height: 1px;
+  background: var(--rule);
+}
+.svc-progress {
+  position: absolute;
+  left: 0;
+  top: -0.5px;
+  width: 100%;
+  height: 2px;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+.svc-item.is-active .svc-progress { animation: progress var(--dwell) linear forwards; }
+@keyframes progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+.svc.is-paused .svc-progress,
+.svc.is-paused .ph-zoom { animation-play-state: paused; }
+.svc.no-autoplay .svc-item.is-active .svc-progress { animation: none; transform: scaleX(1); }
+.svc.no-autoplay .ph-zoom { animation: none !important; }
+
+.svc-h { font: inherit; }
+
+.svc-btn {
+  display: block;
+  width: 100%;
+  padding: 5px 0 25px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: padding-bottom var(--t-swap) var(--ease-io);
+}
+.svc-item.is-active .svc-btn { cursor: default; }
+.svc-item:last-child:not(.is-active) .svc-btn { padding-bottom: 0; }   /* last title sits on the photo's bottom edge */
+
+/* title is laid out at the open size (36px) and scaled down when closed,
+   so open/close is a transform instead of a font-size reflow */
+.svc-title {
+  display: block;
+  font-size: 36px;
+  line-height: 1.15;
+  letter-spacing: -0.6px;
+  font-weight: 400;
+  color: var(--ink-muted);
+  --s: calc(23.5 / 36);                             /* closed scale */
+  width: calc(100% / var(--s));                     /* wrap at the visible width, not the 36px one */
+  transform: scale(var(--s));
+  transform-origin: 0 0;
+  margin-bottom: calc(1.15em * (var(--s) - 1));    /* give back the space the scale-down leaves empty */
+  transition:
+    transform var(--t-swap) var(--ease-io),
+    width var(--t-swap) var(--ease-io),
+    margin-bottom var(--t-swap) var(--ease-io),
+    color var(--t-swap) var(--ease-io),
+    font-weight var(--t-swap) var(--ease-io);
+}
+.svc-item.is-active .svc-title {
+  --s: 1;
+  color: var(--ink);
+  font-weight: 500;
+}
+.svc-item:not(.is-active) .svc-btn:hover .svc-title { color: var(--ink); }
+
+.svc-btn:focus-visible { outline: none; }
+.svc-btn:focus-visible .svc-title {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+/* body: 0fr ⇄ 1fr height, content staggers in */
+.svc-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--t-swap) var(--ease-io);
+}
+.svc-item.is-active .svc-body { grid-template-rows: 1fr; }
+.svc-body-in { min-height: 0; overflow: hidden; }
+
+.svc-body p {
+  max-width: 456px;
+  font-size: 20px;
+  line-height: 24.5px;
+  color: var(--body-ink);
+}
+.svc-body p:first-child { margin-top: 3px; }
+.svc-body p + p { margin-top: 9px; }
+
+.svc-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 28px 0 2px;
+  padding: 16px 28px 16px 27px;
+  background: var(--btn);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: -0.5px;
+  transition: background-color calc(200ms * var(--slow)) var(--ease-io);
+}
+.svc-cta svg { width: 16.5px; height: 19.9px; transition: transform calc(260ms * var(--slow)) var(--ease-out); }
+.svc-cta:hover { background: var(--btn-hover); }
+.svc-cta:hover svg { transform: translateX(3px); }
+.svc-cta:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+/* stagger: leaving is quick and together, entering waits for the height to open */
+.svc-body p,
+.svc-cta {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity calc(140ms * var(--slow)) linear,
+    transform calc(140ms * var(--slow)) var(--ease-io),
+    background-color calc(200ms * var(--slow)) var(--ease-io);
+}
+.svc-body p:nth-child(1) { --i: 0; }
+.svc-body p:nth-child(2) { --i: 1; }
+.svc-cta { --i: 2; }
+.svc-item.is-active .svc-body p,
+.svc-item.is-active .svc-cta {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--t-fade) var(--ease-io) calc(var(--lead) + var(--i) * var(--stagger)),
+    transform var(--t-rise) var(--ease-out) calc(var(--lead) + var(--i) * var(--stagger)),
+    background-color calc(200ms * var(--slow)) var(--ease-io);
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+@media (max-width: 1199px) {
+  .svc { padding: 56px; }
+  .svc-title { font-size: 32px; --s: calc(22 / 32); }
+}
+
+@media (max-width: 859px) {
+  .page { padding: 16px; }
+  .svc {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 40px 20px 28px;
+  }
+  .svc-media::before { padding-top: 75%; }
+  .svc-list { margin-top: 28px; }
+  .svc-item, .svc-item.is-active { flex: none; }
+  .svc-item.is-active:not(:first-child) { margin-top: 12px; }
+  .svc-title { font-size: 28px; --s: calc(20 / 28); }
+  .svc-body p { font-size: 18px; line-height: 23px; }
+  .svc-cta { font-size: 18px; }
+  .svc-cta { margin-bottom: 20px; }
+}
+
+/* ==========================================================================
+   Reduced motion: no autoplay (JS), fades only
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  :root { --t-rise: 1ms; --stagger: 0ms; --lead: 0ms; }
+  .ph img, .ph.is-entering img { transform: none !important; }
+  .svc-body p, .svc-cta { transform: none !important; }
+}
+
+/* screenshot mode: frozen, progress at 27% like the mock */
+.shot *, .shot *::before, .shot *::after { transition: none !important; }
+.shot .svc-item.is-active .svc-progress {
+  animation-delay: calc(var(--dwell) * -0.27) !important;
+  animation-play-state: paused !important;
+}
+.shot .ph-zoom { animation: none !important; }
+
+/* ==========================================================================
+   Demo panel
+   ========================================================================== */
+.demo {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  width: 260px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(17, 17, 23, .88);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  color: #eef2f6;
+  font: 500 12px/1.3 var(--font);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+}
+.demo[hidden] { display: none; }
+.demo-label { margin: 0 0 6px; color: rgba(238, 242, 246, .6); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.demo-label ~ .demo-label { margin-top: 12px; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button {
+  padding: 6px 9px;
+  border: 1px solid rgba(238, 242, 246, .18);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--green); border-color: var(--green); color: var(--ink); }
+.demo-hint { margin-top: 12px; color: rgba(238, 242, 246, .5); font-size: 11px; }
+.demo kbd { padding: 1px 5px; border: 1px solid rgba(238, 242, 246, .25); border-radius: 4px; font: inherit; }
