@@ -38,13 +38,10 @@
       tab.setAttribute('aria-controls', `svcb-p${k}`);
       tab.setAttribute('aria-selected', 'false');
       tab.tabIndex = -1;
-      const bar = document.createElement('span');
-      bar.className = 'svc-progress';
-      bar.setAttribute('aria-hidden', 'true');
       const label = document.createElement('span');
       label.className = 'svcb-tab-text';
       label.textContent = title;
-      tab.append(bar, label);
+      tab.append(label);
       tabs.append(tab);
 
       const pnl = document.createElement('div');
@@ -100,7 +97,8 @@
 
     /* auto-advance when the active progress bar completes */
     section.addEventListener('animationend', (e) => {
-      if (e.animationName !== 'progress' || !e.target.closest('.is-active')) return;
+      if (e.animationName !== 'progress') return;
+      if (!e.target.closest('.is-active') && !e.target.classList.contains('svcb-progress')) return;
       if (!autoplayOn() || SHOT || section.hidden) return;
       go(index + 1, { dir: 'next' });
     });
@@ -159,6 +157,8 @@
   const tabsB = [...secB.querySelectorAll('.svcb-tab')];
   const panelsB = [...secB.querySelectorAll('.svcb-panel')];
   const tabRow = secB.querySelector('.svcb-tabs');
+  const barB = secB.querySelector('.svcb-progress');
+  const restartBar = () => { barB.style.animation = 'none'; void barB.offsetWidth; barB.style.animation = ''; };
   let leaveTimer = 0;
   const B = controller(secB, {
     triggers: tabsB,
@@ -170,6 +170,7 @@
         t.setAttribute('aria-selected', String(on));
         t.tabIndex = on ? 0 : -1;
       });
+      restartBar();                                 // the full-width bar starts from zero for every item
       clearTimeout(leaveTimer);
       panelsB.forEach((p) => p.classList.remove('is-leaving'));
       if (prev >= 0 && !instant) {
