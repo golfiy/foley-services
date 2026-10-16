@@ -62,8 +62,10 @@
 
   /* ---------- one controller per layout ---------- */
   /* hoverHides: the running line fades out while hovered (A) instead of just freezing (B)
-     clickStops: 'always' – any selection stops autoplay for good (A); 'touch' – only a tap does (B) */
-  function controller(section, { triggers, axis, onActivate, hoverZones = [section], hoverHides = false, clickStops = 'touch' }) {
+     clickStops: 'always' – any selection stops autoplay (A); 'touch' – only a tap does (B)
+     resumeOnLeave: a stop lasts only while the reader is here – cursor leaves the list, focus leaves
+     the section, or the section scrolls out of view – then autoplay carries on from the picked item (A) */
+  function controller(section, { triggers, axis, onActivate, hoverZones = [section], hoverHides = false, clickStops = 'touch', resumeOnLeave = false }) {
     const photos = [...section.querySelectorAll('.ph')];
     const n = photos.length;
     const pauses = new Set();
@@ -79,6 +81,12 @@
     function stop() {
       if (stopped) return;
       stopped = true;
+      syncAutoplayState();
+      syncPanel();
+    }
+    function resume() {                             // the progress animation restarts from zero for the picked item
+      if (!stopped || !resumeOnLeave) return;
+      stopped = false;
       syncAutoplayState();
       syncPanel();
     }
@@ -130,6 +138,7 @@
       const on = settings.hoverPause && hovered.size > 0;
       if (on) pauses.add('hover'); else pauses.delete('hover');
       if (hoverHides) section.classList.toggle('is-hovering', on);
+      if (!hovered.size) resume();
       syncPause();
     };
     hoverZones.forEach((z) => {
@@ -137,9 +146,14 @@
       z.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch') { hovered.delete(z); syncHover(); } });
     });
     section.addEventListener('focusin', (e) => { if (e.target.matches(':focus-visible')) { pauses.add('focus'); syncPause(); } });
-    section.addEventListener('focusout', (e) => { if (!section.contains(e.relatedTarget)) { pauses.delete('focus'); syncPause(); } });
+    section.addEventListener('focusout', (e) => {
+      if (section.contains(e.relatedTarget)) return;
+      pauses.delete('focus');
+      resume();
+      syncPause();
+    });
     new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) pauses.delete('offscreen'); else pauses.add('offscreen');
+      if (entry.isIntersecting) pauses.delete('offscreen'); else { pauses.add('offscreen'); resume(); }
       syncPause();
     }, { threshold: 0.25 }).observe(section);
     document.addEventListener('visibilitychange', () => {
@@ -171,6 +185,7 @@
     hoverZones: [secA.querySelector('.svc-list')],
     hoverHides: true,
     clickStops: 'always',
+    resumeOnLeave: true,
     onActivate(next) {
       itemsA.forEach((it, k) => {
         it.classList.toggle('is-active', k === next);
