@@ -180,7 +180,7 @@ img, svg { display: block; }
   transition: opacity calc(200ms * var(--slow)) var(--ease-io) calc(150ms * var(--slow));
 }
 /* A, picked by the reader: no line at all, the open item speaks for itself */
-.svc.user-stopped .svc-progress { opacity: 0; }
+.svc.user-stopped .svc-progress { opacity: 0; transition: none; }   /* instantly: no fill-up flash on the click */
 
 .svc-h { font: inherit; }
 
