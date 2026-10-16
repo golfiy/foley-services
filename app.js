@@ -12,7 +12,7 @@
   /* ---------- shared settings (demo panel / URL) ---------- */
   const settings = {
     autoplay: !reduceMotion && params.get('autoplay') !== '0',
-    userStopped: false,          // a tap on touch stops autoplay so the reader is not interrupted
+    userStopped: false,          // any click / key selection stops autoplay: the reader took control
     hoverPause: params.get('hoverpause') !== '0',   // client: hovering the text / tabs freezes the line so nothing switches while reading
     dwell: Math.max(2000, parseInt(params.get('dwell'), 10) || 8000),
     fx: params.get('fx') || (reduceMotion ? 'fade' : 'wipe'),
@@ -105,15 +105,21 @@
       go(index + 1, { dir: 'next' });
     });
 
-    triggers.forEach((t, k) => t.addEventListener('click', () => {
-      if (lastPointer === 'touch' && !settings.userStopped) { settings.userStopped = true; syncAutoplay(); }
-      go(k);
-    }));
+    triggers.forEach((t, k) => t.addEventListener('click', () => { stopAutoplay(); go(k); }));
 
-    /* hover pause only over the reading / choosing zone, not the photo */
+    /* hover over the reading / choosing zone (not the photo): the line fades out and holds;
+       when the cursor leaves, the current item gets its full time again */
     const hovered = new Set();
+    let wasHovering = false;
     const syncHover = () => {
-      if (settings.hoverPause && hovered.size) pauses.add('hover'); else pauses.delete('hover');
+      const on = settings.hoverPause && hovered.size > 0;
+      if (on) pauses.add('hover'); else pauses.delete('hover');
+      section.classList.toggle('is-hovering', on);
+      if (wasHovering && !on && autoplayOn()) {
+        const bar = section.querySelector('.is-active .svc-progress');
+        if (bar) { bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = ''; }
+      }
+      wasHovering = on;
       syncPause();
     };
     hoverZones.forEach((z) => {
@@ -139,8 +145,6 @@
     };
   }
 
-  let lastPointer = 'mouse';
-  document.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType || 'mouse'; }, true);
 
   /* A: vertical accordion */
   const btnsA = itemsA.map((it) => it.querySelector('.svc-btn'));
@@ -161,6 +165,7 @@
     e.preventDefault();
     const t = (map[e.key] + btnsA.length) % btnsA.length;
     btnsA[t].focus();
+    stopAutoplay();
     A.go(t);
   }));
 
@@ -219,10 +224,12 @@
     e.preventDefault();
     const target = (map[e.key] + tabsB.length) % tabsB.length;
     tabsB[target].focus();
+    stopAutoplay();
     B.go(target, { dir: e.key === 'ArrowRight' || e.key === 'End' ? 'next' : 'prev' });
   }));
   secB.querySelectorAll('.svcb-arrow').forEach((a) => a.addEventListener('click', () => {
     const step = parseInt(a.dataset.step, 10);
+    stopAutoplay();
     B.go(B.index + step, { dir: step > 0 ? 'next' : 'prev' });
   }));
 
@@ -236,6 +243,11 @@
   function setFx(fx) {
     settings.fx = fx;
     ctrls.forEach((c) => { c.section.dataset.fx = fx; });
+  }
+  function stopAutoplay() {
+    if (settings.userStopped) return;
+    settings.userStopped = true;
+    syncAutoplay();
   }
   function syncAutoplay() {
     ctrls.forEach((c) => c.section.classList.toggle('no-autoplay', !autoplayOn()));
