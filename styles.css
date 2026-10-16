@@ -167,17 +167,20 @@ img, svg { display: block; }
 .svc-root.is-paused .svc-progress,
 .svc-root.is-paused .ph-zoom { animation-play-state: paused; }
 .svc-root.no-autoplay .is-active .svc-progress { animation: none; transform: scaleX(1); }
-/* after a click the line becomes a static "selected" marker: it finishes filling instead of jumping */
+/* B (tap on touch) / autoplay off: the line becomes a static "selected" marker, finishing its fill */
 .svc-root.no-autoplay .svc-progress {
   transition:
     transform calc(420ms * var(--slow)) var(--ease-out),
     opacity calc(200ms * var(--slow)) var(--ease-io);
 }
-/* hover: the running line fades out (after a short hold so crossing the edge does not blink) */
-.svc-root.is-hovering:not(.no-autoplay) .is-active .svc-progress {
+/* A, hover: the running line fades out (after a short hold so crossing the edge does not blink)
+   and comes back from the same point when the cursor leaves */
+.svc.is-hovering:not(.no-autoplay) .is-active .svc-progress {
   opacity: 0;
   transition: opacity calc(200ms * var(--slow)) var(--ease-io) calc(150ms * var(--slow));
 }
+/* A, picked by the reader: no line at all, the open item speaks for itself */
+.svc.user-stopped .svc-progress { opacity: 0; }
 
 .svc-h { font: inherit; }
 

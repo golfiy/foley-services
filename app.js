@@ -12,12 +12,10 @@
   /* ---------- shared settings (demo panel / URL) ---------- */
   const settings = {
     autoplay: !reduceMotion && params.get('autoplay') !== '0',
-    userStopped: false,          // any click / key selection stops autoplay: the reader took control
-    hoverPause: params.get('hoverpause') !== '0',   // client: hovering the text / tabs freezes the line so nothing switches while reading
+    hoverPause: params.get('hoverpause') !== '0',   // hovering the text / tabs holds the current item
     dwell: Math.max(2000, parseInt(params.get('dwell'), 10) || 8000),
     fx: params.get('fx') || (reduceMotion ? 'fade' : 'wipe'),
   };
-  const autoplayOn = () => settings.autoplay && !settings.userStopped;
   const slowFactor = () => parseFloat(getComputedStyle(root).getPropertyValue('--slow')) || 1;
 
   /* ---------- variant B is built from variant A's content ---------- */
@@ -63,12 +61,27 @@
   })();
 
   /* ---------- one controller per layout ---------- */
-  function controller(section, { triggers, axis, onActivate, hoverZones = [section] }) {
+  /* hoverHides: the running line fades out while hovered (A) instead of just freezing (B)
+     clickStops: 'always' – any selection stops autoplay for good (A); 'touch' – only a tap does (B) */
+  function controller(section, { triggers, axis, onActivate, hoverZones = [section], hoverHides = false, clickStops = 'touch' }) {
     const photos = [...section.querySelectorAll('.ph')];
     const n = photos.length;
     const pauses = new Set();
     let index = -1;
     let cleanupTimer = 0;
+    let stopped = false;                            // the reader picked an item: no more auto-advance
+
+    const running = () => settings.autoplay && !stopped;
+    function syncAutoplayState() {
+      section.classList.toggle('no-autoplay', !running());
+      section.classList.toggle('user-stopped', stopped);
+    }
+    function stop() {
+      if (stopped) return;
+      stopped = true;
+      syncAutoplayState();
+      syncPanel();
+    }
 
     const syncPause = () => section.classList.toggle('is-paused', pauses.size > 0);
 
@@ -101,25 +114,22 @@
     /* auto-advance when the active progress bar completes */
     section.addEventListener('animationend', (e) => {
       if (e.animationName !== 'progress' || !e.target.closest('.is-active')) return;
-      if (!autoplayOn() || SHOT || section.hidden) return;
+      if (!running() || SHOT || section.hidden) return;
       go(index + 1, { dir: 'next' });
     });
 
-    triggers.forEach((t, k) => t.addEventListener('click', () => { stopAutoplay(); go(k); }));
+    triggers.forEach((t, k) => t.addEventListener('click', () => {
+      if (clickStops === 'always' || lastPointer === 'touch') stop();
+      go(k);
+    }));
 
-    /* hover over the reading / choosing zone (not the photo): the line fades out and holds;
-       when the cursor leaves, the current item gets its full time again */
+    /* hover over the reading / choosing zone (not the photo) holds the item; it carries on from
+       the same point when the cursor leaves. In A the line also fades out while held */
     const hovered = new Set();
-    let wasHovering = false;
     const syncHover = () => {
       const on = settings.hoverPause && hovered.size > 0;
       if (on) pauses.add('hover'); else pauses.delete('hover');
-      section.classList.toggle('is-hovering', on);
-      if (wasHovering && !on && autoplayOn()) {
-        const bar = section.querySelector('.is-active .svc-progress');
-        if (bar) { bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = ''; }
-      }
-      wasHovering = on;
+      if (hoverHides) section.classList.toggle('is-hovering', on);
       syncPause();
     };
     hoverZones.forEach((z) => {
@@ -140,10 +150,17 @@
     return {
       section,
       go,
+      stop,
       get index() { return index; },
+      get stopped() { return stopped; },
       setHoverPause() { syncHover(); },
+      resetAutoplay() { stopped = false; syncAutoplayState(); },
+      syncAutoplay: syncAutoplayState,
     };
   }
+
+  let lastPointer = 'mouse';
+  document.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType || 'mouse'; }, true);
 
 
   /* A: vertical accordion */
@@ -152,6 +169,8 @@
     triggers: btnsA,
     axis: 'y',
     hoverZones: [secA.querySelector('.svc-list')],
+    hoverHides: true,
+    clickStops: 'always',
     onActivate(next) {
       itemsA.forEach((it, k) => {
         it.classList.toggle('is-active', k === next);
@@ -165,7 +184,7 @@
     e.preventDefault();
     const t = (map[e.key] + btnsA.length) % btnsA.length;
     btnsA[t].focus();
-    stopAutoplay();
+    A.stop();
     A.go(t);
   }));
 
@@ -224,12 +243,10 @@
     e.preventDefault();
     const target = (map[e.key] + tabsB.length) % tabsB.length;
     tabsB[target].focus();
-    stopAutoplay();
     B.go(target, { dir: e.key === 'ArrowRight' || e.key === 'End' ? 'next' : 'prev' });
   }));
   secB.querySelectorAll('.svcb-arrow').forEach((a) => a.addEventListener('click', () => {
     const step = parseInt(a.dataset.step, 10);
-    stopAutoplay();
     B.go(B.index + step, { dir: step > 0 ? 'next' : 'prev' });
   }));
 
@@ -244,13 +261,8 @@
     settings.fx = fx;
     ctrls.forEach((c) => { c.section.dataset.fx = fx; });
   }
-  function stopAutoplay() {
-    if (settings.userStopped) return;
-    settings.userStopped = true;
-    syncAutoplay();
-  }
   function syncAutoplay() {
-    ctrls.forEach((c) => c.section.classList.toggle('no-autoplay', !autoplayOn()));
+    ctrls.forEach((c) => c.syncAutoplay());
     syncPanel();
   }
 
@@ -302,7 +314,7 @@
   function syncPanel() {
     if (!panel) return;
     const cur = {
-      autoplay: autoplayOn() ? 'on' : 'off',
+      autoplay: settings.autoplay && !(layout === 'b' ? B : A).stopped ? 'on' : 'off',
       dwell: String(settings.dwell),
       hoverpause: settings.hoverPause ? 'on' : 'off',
       fx: settings.fx,
@@ -318,7 +330,7 @@
     if (!b) return;
     const key = b.closest('.seg').dataset.key;
     const v = b.dataset.v;
-    if (key === 'autoplay') { settings.autoplay = v === 'on'; settings.userStopped = false; syncAutoplay(); }
+    if (key === 'autoplay') { settings.autoplay = v === 'on'; ctrls.forEach((c) => c.resetAutoplay()); syncAutoplay(); }
     if (key === 'dwell') setDwell(parseInt(v, 10));
     if (key === 'hoverpause') { settings.hoverPause = v === 'on'; ctrls.forEach((c) => c.setHoverPause(settings.hoverPause)); }
     if (key === 'fx') setFx(v);
