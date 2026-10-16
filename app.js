@@ -13,7 +13,7 @@
   const settings = {
     autoplay: !reduceMotion && params.get('autoplay') !== '0',
     userStopped: false,          // a tap on touch stops autoplay so the reader is not interrupted
-    hoverPause: params.get('hoverpause') === '1',
+    hoverPause: params.get('hoverpause') !== '0',   // client: hovering the text / tabs freezes the line so nothing switches while reading
     dwell: Math.max(2000, parseInt(params.get('dwell'), 10) || 8000),
     fx: params.get('fx') || (reduceMotion ? 'fade' : 'wipe'),
   };
@@ -38,10 +38,13 @@
       tab.setAttribute('aria-controls', `svcb-p${k}`);
       tab.setAttribute('aria-selected', 'false');
       tab.tabIndex = -1;
+      const bar = document.createElement('span');
+      bar.className = 'svc-progress';
+      bar.setAttribute('aria-hidden', 'true');
       const label = document.createElement('span');
       label.className = 'svcb-tab-text';
       label.textContent = title;
-      tab.append(label);
+      tab.append(bar, label);
       tabs.append(tab);
 
       const pnl = document.createElement('div');
@@ -60,7 +63,7 @@
   })();
 
   /* ---------- one controller per layout ---------- */
-  function controller(section, { triggers, axis, onActivate }) {
+  function controller(section, { triggers, axis, onActivate, hoverZones = [section] }) {
     const photos = [...section.querySelectorAll('.ph')];
     const n = photos.length;
     const pauses = new Set();
@@ -97,8 +100,7 @@
 
     /* auto-advance when the active progress bar completes */
     section.addEventListener('animationend', (e) => {
-      if (e.animationName !== 'progress') return;
-      if (!e.target.closest('.is-active') && !e.target.classList.contains('svcb-progress')) return;
+      if (e.animationName !== 'progress' || !e.target.closest('.is-active')) return;
       if (!autoplayOn() || SHOT || section.hidden) return;
       go(index + 1, { dir: 'next' });
     });
@@ -108,8 +110,16 @@
       go(k);
     }));
 
-    section.addEventListener('pointerenter', (e) => { if (settings.hoverPause && e.pointerType !== 'touch') { pauses.add('hover'); syncPause(); } });
-    section.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch') { pauses.delete('hover'); syncPause(); } });
+    /* hover pause only over the reading / choosing zone, not the photo */
+    const hovered = new Set();
+    const syncHover = () => {
+      if (settings.hoverPause && hovered.size) pauses.add('hover'); else pauses.delete('hover');
+      syncPause();
+    };
+    hoverZones.forEach((z) => {
+      z.addEventListener('pointerenter', (e) => { if (e.pointerType !== 'touch') { hovered.add(z); syncHover(); } });
+      z.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch') { hovered.delete(z); syncHover(); } });
+    });
     section.addEventListener('focusin', (e) => { if (e.target.matches(':focus-visible')) { pauses.add('focus'); syncPause(); } });
     section.addEventListener('focusout', (e) => { if (!section.contains(e.relatedTarget)) { pauses.delete('focus'); syncPause(); } });
     new IntersectionObserver(([entry]) => {
@@ -125,7 +135,7 @@
       section,
       go,
       get index() { return index; },
-      setHoverPause(on) { if (!on) pauses.delete('hover'); else if (section.matches(':hover')) pauses.add('hover'); syncPause(); },
+      setHoverPause() { syncHover(); },
     };
   }
 
@@ -137,6 +147,7 @@
   const A = controller(secA, {
     triggers: btnsA,
     axis: 'y',
+    hoverZones: [secA.querySelector('.svc-list')],
     onActivate(next) {
       itemsA.forEach((it, k) => {
         it.classList.toggle('is-active', k === next);
@@ -157,12 +168,34 @@
   const tabsB = [...secB.querySelectorAll('.svcb-tab')];
   const panelsB = [...secB.querySelectorAll('.svcb-panel')];
   const tabRow = secB.querySelector('.svcb-tabs');
-  const barB = secB.querySelector('.svcb-progress');
-  const restartBar = () => { barB.style.animation = 'none'; void barB.offsetWidth; barB.style.animation = ''; };
   let leaveTimer = 0;
+
+  /* keep the active tab in view when the row scrolls (tablet / mobile) */
+  function revealTab(k, instant) {
+    if (tabRow.scrollWidth <= tabRow.clientWidth) return;
+    const t = tabsB[k];
+    tabRow.scrollTo({ left: t.offsetLeft - (tabRow.clientWidth - t.offsetWidth) / 2, behavior: instant ? 'auto' : 'smooth' });
+  }
+
+  /* each tab owns its label plus half of the gap on either side, so its slot of the rule
+     ends where the next tab's begins: the line fills "to the end of the tab", then moves on */
+  function layoutTabSlots() {
+    tabsB.forEach((t, k) => {
+      const prev = tabsB[k - 1];
+      const next = tabsB[k + 1];
+      const l = prev ? (t.offsetLeft - (prev.offsetLeft + prev.offsetWidth)) / 2 : 0;
+      const r = next ? (next.offsetLeft - (t.offsetLeft + t.offsetWidth)) / 2 : 0;
+      t.style.setProperty('--ext-l', `${Math.max(0, l)}px`);
+      t.style.setProperty('--ext-r', `${Math.max(0, r)}px`);
+    });
+  }
+  new ResizeObserver(layoutTabSlots).observe(tabRow);
+  document.fonts?.ready.then(layoutTabSlots);
+
   const B = controller(secB, {
     triggers: tabsB,
     axis: 'x',
+    hoverZones: [secB.querySelector('.svcb-tabbar'), secB.querySelector('.svcb-side')],
     onActivate(next, prev, instant) {
       tabsB.forEach((t, k) => {
         const on = k === next;
@@ -170,7 +203,6 @@
         t.setAttribute('aria-selected', String(on));
         t.tabIndex = on ? 0 : -1;
       });
-      restartBar();                                 // the full-width bar starts from zero for every item
       clearTimeout(leaveTimer);
       panelsB.forEach((p) => p.classList.remove('is-leaving'));
       if (prev >= 0 && !instant) {
@@ -178,11 +210,7 @@
         leaveTimer = setTimeout(() => panelsB[prev].classList.remove('is-leaving'), 320 * slowFactor());
       }
       panelsB.forEach((p, k) => p.classList.toggle('is-active', k === next));
-      // keep the active tab in view when the row scrolls (tablet / mobile)
-      if (tabRow.scrollWidth > tabRow.clientWidth) {
-        const t = tabsB[next];
-        tabRow.scrollTo({ left: t.offsetLeft - (tabRow.clientWidth - t.offsetWidth) / 2, behavior: instant ? 'auto' : 'smooth' });
-      }
+      revealTab(next, instant);
     },
   });
   tabsB.forEach((t, k) => t.addEventListener('keydown', (e) => {
@@ -225,6 +253,7 @@
     if (!initial) to.go(from.index, { instant: true });   // keep the same service open
     secA.hidden = v !== 'a';
     secB.hidden = v !== 'b';
+    if (v === 'b') { layoutTabSlots(); revealTab(B.index, true); }   // offsets are 0 while B is hidden
     abNav.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.layout === v)));
     if (!initial) {
       const url = new URL(location.href);
